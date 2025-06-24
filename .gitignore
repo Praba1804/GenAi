@@ -1,2 +1,11 @@
 .venv/
 __pycache__/
+# Create .gitignore with common patterns
+cat > .gitignore << EOF
+.env
+*.pyc
+__pycache__/
+.chroma_db/
+*.log
+.DS_Store
+EOF
