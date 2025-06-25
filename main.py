@@ -3,72 +3,83 @@ from agents.optimist_agent import OptimistAgent
 from agents.expert_agent import ExpertAgent
 from voice.stt import stt_from_mic
 from voice.tts import speak
-from state.types import AgentState
-from state.handlers import realist_handler, optimist_handler, expert_handler, user_handler
 from utils.router import decide_next_agent
+
+# Handoff phrases to detect when to return to user
+HANDOFF_PHRASES = [
+    "let me know", "can you tell me", "what do you think", "could you share", "please provide", "would you like", "do you have", "are you considering", "what's your", "what is your", "how about you", "tell me more", "could you clarify", "may I ask", "would you mind"
+]
+
+def should_handoff_to_user(response: str) -> bool:
+    resp = response.strip().lower()
+    if resp.endswith("?"):
+        return True
+    for phrase in HANDOFF_PHRASES:
+        if phrase in resp:
+            return True
+    return False
 
 if __name__ == "__main__":
     print("Welcome to the Dynamic Multi-Agent Voice Conversation System!")
+    print("🤖 Hi! I'm here with my colleagues to discuss any topic you'd like. What would you like us to explore together?")
+    
     mode = input("Choose mode: [1] Text [2] Voice\nEnter: ").strip()
 
-    state: AgentState = {"history": [], "user_input": ""}
+    # Initialize agents
+    realist_agent = RealistAgent()
+    optimist_agent = OptimistAgent()
+    expert_agent = ExpertAgent()
     
-    if mode == '1':
-        print("\nText mode. Type 'quit' to exit.")
-        state["user_input"] = input("You: ")
-    else:
-        print("\nVoice mode. Say 'quit' to exit.")
-        state["user_input"] = stt_from_mic()
-        print(f"You: {state['user_input']}")
-
-    # Initial user turn
-    state = user_handler(state)
+    # Initialize conversation state
+    history = []
     
     while True:
-        next_agent = decide_next_agent(state)
-        print(f"[Router decided next agent is: {next_agent.upper()}]")
+        # Get user input
+        if mode == '1':
+            user_input = input("You: ")
+        else:
+            user_input = stt_from_mic()
+            print(f"You: {user_input}")
         
-        if next_agent == "end":
-            speak("Glad we could talk. Goodbye!", "realist")
+        if "quit" in user_input.lower():
+            print("Goodbye! 👋")
             break
+        
+        # Add user input to history
+        history.append({"speaker": "user", "message": user_input})
 
-        if next_agent == "user":
-            if mode == '1':
-                state["user_input"] = input("You: ")
-            else:
-                state["user_input"] = stt_from_mic()
-                print(f"You: {state['user_input']}")
-            
-            if "quit" in state["user_input"].lower():
-                break
-            state = user_handler(state)
-            continue
+        # Agent response loop
+        while True:
+            state = {"history": history}
+            next_agent = decide_next_agent(state)
+            print(f"[Router] Next agent: {next_agent}")
 
-        handler = {
-            "realist": realist_handler,
-            "optimist": optimist_handler,
-            "expert": expert_handler,
-        }[next_agent]
-        
-        # Get the latest user message for the agent
-        latest_user_message = ""
-        for turn in reversed(state["history"]):
-            if turn["speaker"] == "user":
-                latest_user_message = turn["message"]
+            if next_agent == "user":
+                break  # Wait for next user input
+
+            if next_agent == "realist":
+                response = realist_agent.respond(user_input, history)
+                history.append({"speaker": "realist", "message": response})
+                print(f"🧑‍💼 Realist: {response}")
+                if mode == '2':
+                    speak(response, agent="realist")
+
+            elif next_agent == "optimist":
+                response = optimist_agent.respond(user_input, history)
+                history.append({"speaker": "optimist", "message": response})
+                print(f"😃 Optimist: {response}")
+                if mode == '2':
+                    speak(response, agent="optimist")
+
+            elif next_agent == "expert":
+                response = expert_agent.respond(user_input, history)
+                history.append({"speaker": "expert", "message": response})
+                print(f"🧑‍🔬 Expert: {response}")
+                if mode == '2':
+                    speak(response, agent="expert")
+
+            # Handoff detection: break if agent is asking for user input
+            if should_handoff_to_user(response):
                 break
-        
-        print(f"[{next_agent.capitalize()} is responding...]")
-        # Pass the latest user message to the handler
-        agent_state = {
-            "history": state["history"],
-            "user_input": latest_user_message
-        }
-        agent_state = handler(agent_state)
-        
-        # Update the main state with agent response
-        state["history"] = agent_state["history"]
-        
-        last_message = state["history"][-1]
-        print(f"{last_message['speaker'].capitalize()}: {last_message['message']}")
-        if mode == '2':
-            speak(last_message['message'], agent=last_message['speaker'])
+
+        print()  # Empty line for readability

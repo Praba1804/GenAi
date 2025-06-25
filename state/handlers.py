@@ -1,38 +1,145 @@
+from typing import Dict, Any
 from agents.realist_agent import RealistAgent
 from agents.optimist_agent import OptimistAgent
 from agents.expert_agent import ExpertAgent
-from state.types import AgentState
-from memory.faiss_memory_client import FaissMemoryClient
-from search.serper_client import serper_search
 
-# Agent and memory instances
-realist = RealistAgent()
-optimist = OptimistAgent()
-expert = ExpertAgent()
-memory_client = FaissMemoryClient()
+# Initialize agents
+realist_agent = RealistAgent()
+optimist_agent = OptimistAgent()
+expert_agent = ExpertAgent()
 
-# Generic agent handler
-def agent_handler(state: AgentState, agent) -> AgentState:
-    response = agent.respond(state)
-    state["history"].append({"speaker": agent.name.lower(), "message": response})
-    memory_client.add_turn(agent.name.lower(), response)
+def user_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle user input and decide next agent"""
+    from utils.router import decide_next_agent
+    # Add user message to history
+    if "user_input" in state and state["user_input"]:
+        state["history"].append({
+            "speaker": "user",
+            "message": state["user_input"]
+        })
+    
+    # Decide which agent should respond next
+    next_agent = decide_next_agent(state)
+    state["next_agent"] = next_agent
+    
     return state
 
-# Specific handlers
-def realist_handler(state: AgentState) -> AgentState:
-    return agent_handler(state, realist)
-
-def optimist_handler(state: AgentState) -> AgentState:
-    return agent_handler(state, optimist)
-
-def expert_handler(state: AgentState) -> AgentState:
-    return agent_handler(state, expert)
-
-# User handler now just stores the turn
-def user_handler(state: AgentState) -> AgentState:
-    user_input = state.get("user_input", "")
-    if user_input:
-        state["history"].append({"speaker": "user", "message": user_input})
-        memory_client.add_turn("user", user_input)
-        state["user_input"] = "" # Clear after processing
+def realist_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle Realist agent response with natural conversation flow"""
+    from utils.router import decide_next_agent
+    # Get the latest user message
+    latest_user_message = ""
+    for turn in reversed(state["history"]):
+        if turn["speaker"] == "user":
+            latest_user_message = turn["message"]
+            break
+    
+    # Get realist response
+    response = realist_agent.respond(latest_user_message, state["history"])
+    
+    # Add realist response to history
+    state["history"].append({
+        "speaker": "realist",
+        "message": response
+    })
+    
+    # Decide if another agent should continue the conversation
+    next_agent = decide_next_agent(state)
+    if next_agent != "user":
+        # Let the next agent continue the conversation
+        if next_agent == "optimist":
+            optimist_response = optimist_agent.respond(latest_user_message, state["history"])
+            state["history"].append({
+                "speaker": "optimist",
+                "message": optimist_response
+            })
+        elif next_agent == "expert":
+            expert_response = expert_agent.respond(latest_user_message, state["history"])
+            state["history"].append({
+                "speaker": "expert",
+                "message": expert_response
+            })
+    
     return state
+
+def optimist_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle Optimist agent response with natural conversation flow"""
+    from utils.router import decide_next_agent
+    # Get the latest user message
+    latest_user_message = ""
+    for turn in reversed(state["history"]):
+        if turn["speaker"] == "user":
+            latest_user_message = turn["message"]
+            break
+    
+    # Get optimist response
+    response = optimist_agent.respond(latest_user_message, state["history"])
+    
+    # Add optimist response to history
+    state["history"].append({
+        "speaker": "optimist",
+        "message": response
+    })
+    
+    # Decide if another agent should continue the conversation
+    next_agent = decide_next_agent(state)
+    if next_agent != "user":
+        # Let the next agent continue the conversation
+        if next_agent == "realist":
+            realist_response = realist_agent.respond(latest_user_message, state["history"])
+            state["history"].append({
+                "speaker": "realist",
+                "message": realist_response
+            })
+        elif next_agent == "expert":
+            expert_response = expert_agent.respond(latest_user_message, state["history"])
+            state["history"].append({
+                "speaker": "expert",
+                "message": expert_response
+            })
+    
+    return state
+
+def expert_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle Expert agent response with natural conversation flow"""
+    from utils.router import decide_next_agent
+    # Get the latest user message
+    latest_user_message = ""
+    for turn in reversed(state["history"]):
+        if turn["speaker"] == "user":
+            latest_user_message = turn["message"]
+            break
+    
+    # Get expert response
+    response = expert_agent.respond(latest_user_message, state["history"])
+    
+    # Add expert response to history
+    state["history"].append({
+        "speaker": "expert",
+        "message": response
+    })
+    
+    # Decide if another agent should continue the conversation
+    next_agent = decide_next_agent(state)
+    if next_agent != "user":
+        # Let the next agent continue the conversation
+        if next_agent == "realist":
+            realist_response = realist_agent.respond(latest_user_message, state["history"])
+            state["history"].append({
+                "speaker": "realist",
+                "message": realist_response
+            })
+        elif next_agent == "optimist":
+            optimist_response = optimist_agent.respond(latest_user_message, state["history"])
+            state["history"].append({
+                "speaker": "optimist",
+                "message": optimist_response
+            })
+    
+    return state
+
+agent_map = {
+    "realist": realist_agent,
+    "optimist": optimist_agent,
+    "expert": expert_agent,
+}

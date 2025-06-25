@@ -7,16 +7,19 @@ from utils.router import decide_next_agent
 if "history" not in st.session_state:
     st.session_state["history"] = []
 if "turn" not in st.session_state:
-    st.session_state["turn"] = "user"
+    st.session_state["turn"] = "system"
 if "user_input" not in st.session_state:
     st.session_state["user_input"] = ""
+if "conversation_started" not in st.session_state:
+    st.session_state["conversation_started"] = False
 
 # Avatars for each participant
 avatars = {
     "user": "👤",
     "realist": "🧑‍💼",
     "optimist": "😃",
-    "expert": "🧑‍🔬"
+    "expert": "🧑‍🔬",
+    "system": "🤖"
 }
 
 # Agent names for display
@@ -24,7 +27,8 @@ agent_names = {
     "user": "You",
     "realist": "Realist",
     "optimist": "Optimist", 
-    "expert": "Expert"
+    "expert": "Expert",
+    "system": "System"
 }
 
 st.title("🤖 Multi-Agent Voice Conversation Demo")
@@ -56,9 +60,19 @@ for turn in st.session_state["history"]:
 def send_message():
     if st.session_state.user_input:
         st.session_state.history.append({"speaker": "user", "message": st.session_state.user_input})
-        st.session_state.turn = decide_next_agent({"history": st.session_state.history})
+        st.session_state.turn = decide_next_agent({"history": st.session_state["history"]})
         st.session_state.user_input = ""  # This is safe inside the callback
         st.rerun()
+
+# System greeting
+if not st.session_state["conversation_started"]:
+    st.session_state["history"].append({
+        "speaker": "system", 
+        "message": "Hi! I'm here with my colleagues to discuss any topic you'd like. What would you like us to explore together?"
+    })
+    st.session_state["conversation_started"] = True
+    st.session_state["turn"] = "user"
+    st.rerun()
 
 # User input
 if st.session_state["turn"] == "user":

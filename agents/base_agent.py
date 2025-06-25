@@ -23,3 +23,7 @@ class BaseAgent(ABC):
         if not results:
             return "No relevant results found."
         return "\n".join([str(r) for r in results])
+
+    def handoff(self, state):
+        # Default: always return None (let router decide)
+        return None

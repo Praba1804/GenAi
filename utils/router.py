@@ -1,54 +1,80 @@
 from dotenv import load_dotenv
 load_dotenv()
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
-from typing import List, Dict, Any
-from config import OPENAI_API_KEY
-from utils.helpers import format_history
+from langchain_core.messages import SystemMessage
+from typing import Dict, Any, List
+from state.handlers import agent_map
 
+class AgentRouter:
+    def __init__(self):
+        self.llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
-ROUTER_PROMPT = """You are an expert router in a multi-agent conversation. Your job is to decide who should speak next.
+    def decide_next_agent(self, state: Dict[str, Any]) -> str:
+        history = state.get("history", [])
+        if not history:
+            return "user"
 
-The participants are:
-- "realist": A practical, fact-driven agent. Good for analysis, risks, and concrete steps.
-- "optimist": A positive, opportunity-focused agent. Good for brainstorming, encouragement, and possibilities.
-- "expert": A knowledgeable agent with deep expertise. Good for technical details, data, and research-backed insights.
-- "user": The human participant. Choose this when their input, opinion, or a direct question is needed.
-- "end": Choose this if the user wants to end the conversation (e.g., says "goodbye", "thanks, I'm done").
+        last_message = history[-1]
+        last_speaker = last_message["speaker"]
 
-IMPORTANT: When the user asks about what someone said earlier (like "What did the Realist say earlier?"), choose the appropriate agent to respond, NOT the user.
+        if last_speaker == "user":
+            return self._llm_decision(history, last_message["message"])
 
-Here is the conversation history (last message is the most recent):
-{history}
+        # Check agent's own handoff logic if available
+        if last_speaker in agent_map:
+            agent = agent_map[last_speaker]
+            handoff_decision = agent.handoff({"history": history})
+            if handoff_decision in ["user", "realist", "optimist", "expert"]:
+                print(f"[Router] Handoff suggested: {handoff_decision}")
+                return handoff_decision
 
-Based on the last message and the conversation, who should speak next?
-Respond with ONLY a single word from this list: realist, optimist, expert, user, end
-Do not use quotes or punctuation.
+        return self._llm_decision(history, last_message["message"])
+
+    def _llm_decision(self, history: List[Dict[str, str]], latest_user_message: str) -> str:
+        recent_turns = history[-6:] if len(history) > 6 else history
+        formatted_history = self._format_history(recent_turns)
+
+        prompt = f"""
+You are a conversation router for a multi-agent system with three agents:
+
+1. Realist Agent: Practical, considers risks and constraints, asks clarifying questions
+2. Optimist Agent: Enthusiastic, focuses on opportunities and positive aspects
+3. Expert Agent: Knowledgeable, provides detailed insights and expert analysis
+
+Recent Conversation:
+{formatted_history}
+
+Latest User Message: "{latest_user_message}"
+
+Instructions:
+- After a user message, always let an agent respond first.
+- If the last agent's message is a direct question to the user, or if more information is needed from the user, choose "user".
+- Otherwise, let another agent respond to build on the previous agent's points, provide a different perspective, or add more information.
+- Encourage agents to reference each other's points and continue the discussion until a user response is necessary.
+- Only return to "user" if the conversation cannot proceed without their input.
+
+Respond with only the agent name: realist, optimist, expert, or user.
 """
-
-def decide_next_agent(state: Dict[str, Any]) -> str:
-    """Uses an LLM to decide the next agent."""
-    history = state.get("history", [])
-    if not history:
-        return "user"  # Start with the user if history is empty
-
-    formatted_history = format_history(history)
-    prompt = ROUTER_PROMPT.format(history=formatted_history)
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.6)  
-    try:
-        response = llm.invoke([
+        response = self.llm.invoke([
             SystemMessage(content=prompt)
         ])
-        next_agent = response.content.strip().lower().strip('"').strip("'")
-        print(f"[Router] LLM response: {response.content.strip()}")
-        
-        valid_agents = ["realist", "optimist", "expert", "user", "end"]
-        if next_agent in valid_agents:
-            print(f"[Router decided next agent is: {next_agent.upper()}]")
-            return next_agent
-        else:
-            print(f"[Router] Invalid agent response: {next_agent}")
-    except Exception as e:
-        print(f"Error in routing: {e}")
+        next_agent = response.content.strip().lower()
+        valid_agents = ["realist", "optimist", "expert", "user"]
+        if next_agent not in valid_agents:
+            return "realist"  # Default to Realist if LLM fails
+        print(f"[Router] Decided next agent: {next_agent}")
+        return next_agent
 
-    return "user" # Default to user on error or invalid response 
+    def _format_history(self, history: List[Dict[str, str]]) -> str:
+        formatted = []
+        for turn in history:
+            speaker = turn["speaker"].capitalize()
+            message = turn["message"][:100] + "..." if len(turn["message"]) > 100 else turn["message"]
+            formatted.append(f"{speaker}: {message}")
+        return "\n".join(formatted)
+
+# Global router instance
+router = AgentRouter()
+
+def decide_next_agent(state: Dict[str, Any]) -> str:
+    return router.decide_next_agent(state)
