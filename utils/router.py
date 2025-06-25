@@ -3,7 +3,6 @@ load_dotenv()
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
 from typing import Dict, Any, List
-from state.handlers import agent_map
 
 class AgentRouter:
     def __init__(self):
@@ -14,56 +13,66 @@ class AgentRouter:
         if not history:
             return "user"
 
+        # --- Determine agents who have spoken since the last user message ---
+        agents_in_round = set()
+        for turn in reversed(history):
+            if turn["speaker"] == "user":
+                break
+            if turn["speaker"] != "system":
+                agents_in_round.add(turn["speaker"])
+
+        all_agents = {"realist", "optimist", "expert"}
+        available_agents = list(all_agents - agents_in_round)
+
+        # If all agents have spoken, force the turn back to the user
+        if not available_agents:
+            print("[Router] All agents have spoken. Returning to user.")
+            return "user"
+
         last_message = history[-1]
-        last_speaker = last_message["speaker"]
+        return self._llm_decision(history, last_message["message"], available_agents)
 
-        if last_speaker == "user":
-            return self._llm_decision(history, last_message["message"])
-
-        # Check agent's own handoff logic if available
-        if last_speaker in agent_map:
-            agent = agent_map[last_speaker]
-            handoff_decision = agent.handoff({"history": history})
-            if handoff_decision in ["user", "realist", "optimist", "expert"]:
-                print(f"[Router] Handoff suggested: {handoff_decision}")
-                return handoff_decision
-
-        return self._llm_decision(history, last_message["message"])
-
-    def _llm_decision(self, history: List[Dict[str, str]], latest_user_message: str) -> str:
+    def _llm_decision(self, history: List[Dict[str, str]], latest_message: str, available_agents: List[str]) -> str:
         recent_turns = history[-6:] if len(history) > 6 else history
         formatted_history = self._format_history(recent_turns)
 
         prompt = f"""
-You are a conversation router for a multi-agent system with three agents:
+You are a conversation router for a multi-agent system. Your job is to select the next speaker.
 
-1. Realist Agent: Practical, considers risks and constraints, asks clarifying questions
-2. Optimist Agent: Enthusiastic, focuses on opportunities and positive aspects
-3. Expert Agent: Knowledgeable, provides detailed insights and expert analysis
+**Available Agents to Choose From:** {', '.join(available_agents)}
 
-Recent Conversation:
+**Recent Conversation:**
 {formatted_history}
 
-Latest User Message: "{latest_user_message}"
+**Instructions:**
+1.  **First, analyze the last message.** Is the user asking a direct question about what a specific agent said previously (e.g., "what did the expert say?")?
+    *   If YES, and the agent being asked is in the available list, your response MUST be the name of that agent.
+2.  **If the user is contributing a new idea or opinion:**
+    *   You must choose one agent from the "Available Agents" list to continue the discussion **only if it will add meaningful value or perspective**.
+    *   Do NOT force every agent to respond to every user message. If the last agent's response is sufficient, or if it feels natural to return to the user, do so.
+    *   Your choice should facilitate a natural, flowing panel discussion.
+3.  **If the last speaker was an agent, and their message was a question to the user:**
+    *   Return `user`.
 
-Instructions:
-- After a user message, always let an agent respond first.
-- If the last agent's message is a direct question to the user, or if more information is needed from the user, choose "user".
-- Otherwise, let another agent respond to build on the previous agent's points, provide a different perspective, or add more information.
-- Encourage agents to reference each other's points and continue the discussion until a user response is necessary.
-- Only return to "user" if the conversation cannot proceed without their input.
-
-Respond with only the agent name: realist, optimist, expert, or user.
+**Your Response:**
+Respond with only the single name of the next speaker from the "Available Agents" list, or `user`.
 """
         response = self.llm.invoke([
             SystemMessage(content=prompt)
         ])
-        next_agent = response.content.strip().lower()
-        valid_agents = ["realist", "optimist", "expert", "user"]
-        if next_agent not in valid_agents:
-            return "realist"  # Default to Realist if LLM fails
-        print(f"[Router] Decided next agent: {next_agent}")
-        return next_agent
+        next_agent = response.content.strip().lower().replace("`", "")
+
+        # Validate the response
+        if next_agent in available_agents:
+            print(f"[Router] Decided next agent: {next_agent}")
+            return next_agent
+        if next_agent == "user":
+            print("[Router] Decided next agent: user")
+            return "user"
+        
+        # Fallback if the LLM fails to follow instructions
+        print(f"[Router] LLM failed, defaulting to first available: {available_agents[0]}")
+        return available_agents[0]
 
     def _format_history(self, history: List[Dict[str, str]]) -> str:
         formatted = []

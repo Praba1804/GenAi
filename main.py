@@ -4,6 +4,7 @@ from agents.expert_agent import ExpertAgent
 from voice.stt import stt_from_mic
 from voice.tts import speak
 from utils.router import decide_next_agent
+from utils.avatars import avatars
 
 # Handoff phrases to detect when to return to user
 HANDOFF_PHRASES = [
@@ -57,29 +58,23 @@ if __name__ == "__main__":
             if next_agent == "user":
                 break  # Wait for next user input
 
-            if next_agent == "realist":
-                response = realist_agent.respond(user_input, history)
-                history.append({"speaker": "realist", "message": response})
-                print(f"🧑‍💼 Realist: {response}")
-                if mode == '2':
-                    speak(response, agent="realist")
+            agent = {
+                "realist": realist_agent,
+                "optimist": optimist_agent,
+                "expert": expert_agent
+            }.get(next_agent)
 
-            elif next_agent == "optimist":
-                response = optimist_agent.respond(user_input, history)
-                history.append({"speaker": "optimist", "message": response})
-                print(f"😃 Optimist: {response}")
+            if agent:
+                response = agent.respond(state)
+                history.append({"speaker": agent.name.lower(), "message": response})
+                print(f"{avatars.get(agent.name.lower())} {agent.name}: {response}")
                 if mode == '2':
-                    speak(response, agent="optimist")
+                    speak(response, agent=agent.name.lower())
 
-            elif next_agent == "expert":
-                response = expert_agent.respond(user_input, history)
-                history.append({"speaker": "expert", "message": response})
-                print(f"🧑‍🔬 Expert: {response}")
-                if mode == '2':
-                    speak(response, agent="expert")
-
-            # Handoff detection: break if agent is asking for user input
-            if should_handoff_to_user(response):
+                # Handoff detection
+                if should_handoff_to_user(response):
+                    break
+            else:
+                print(f"[Router] Error: Unknown agent '{next_agent}'")
                 break
-
-        print()  # Empty line for readability
+        print()

@@ -12,17 +12,12 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def respond(self, state: Dict[str, Any]) -> str:
+        """
+        Respond to the current conversation state.
+        The state includes the full history. The agent should decide
+        what to respond to based on the last turn.
+        """
         pass
-
-    def needs_search(self, message: str, context: Dict[str, Any]) -> bool:
-        """Decide if a web search is needed. Default: False."""
-        return False
-
-    def process_search_results(self, results: list, context: Dict[str, Any]) -> str:
-        """Format search results for agent response. Default: return summary."""
-        if not results:
-            return "No relevant results found."
-        return "\n".join([str(r) for r in results])
 
     def handoff(self, state):
         # Default: always return None (let router decide)
