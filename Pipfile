@@ -12,6 +12,7 @@ deepgram-sdk = "*"
 python-dotenv = "*"
 sounddevice = "*"
 soundfile = "*"
+langchain-openai = "*"
 
 [dev-packages]
 black = "*"
