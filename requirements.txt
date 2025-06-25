@@ -1,11 +1,13 @@
 streamlit>=1.28.0
-langgraph>=0.0.10
 langchain>=0.1.14
 langchain-openai>=0.1.0
-chromadb>=0.4.24
-deepgram-sdk>=2.0.0
-requests>=2.31.0
+openai
 python-dotenv>=1.0.0
-sounddevice>=0.4.6
-soundfile>=0.12.1
 faiss-cpu>=1.7.4
+httpx
+tqdm
+requests>=2.31.0
+# If you use Deepgram for voice, include:
+deepgram-sdk>=2.0.0
+# If you use Serper for search, include:
+serpapi
