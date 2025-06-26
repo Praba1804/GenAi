@@ -34,6 +34,29 @@ def should_handoff_to_user(response: str) -> bool:
 
 st.title("🤖 Multi-Agent Discussion Panel")
 
+# --- Compact Header with New Conversation Button ---
+col1, col2, col3 = st.columns([3, 1, 1])
+with col1:
+    st.markdown("### Discuss any topic with our AI agents")
+with col3:
+    if st.button("🔄 New", help="Start a fresh conversation"):
+        st.session_state.history = []
+        st.session_state.turn = "user"
+        st.rerun()
+
+# --- Compact Sample Questions Section ---
+with st.expander("💡 Sample topics to try:", expanded=False):
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**🎯 Career**  \n*Internship vs final project?*")
+    
+    with col2:
+        st.markdown("**🌍 Study Abroad**  \n*Master's degree abroad?*")
+    
+    with col3:
+        st.markdown("**📈 Growth**  \n*Time management skills?*")
+
 # --- System Greeting (only once) ---
 if not st.session_state.history:
     st.session_state.history.append({
@@ -94,4 +117,9 @@ def on_user_input():
         st.session_state.user_input = ""
 
 # Display the input box, which will trigger the agent logic on the next rerun
-st.text_input("Your message:", key="user_input", on_change=on_user_input, disabled=(st.session_state.turn != "user"))
+st.text_input(
+    "Your message:", 
+    key="user_input", 
+    on_change=on_user_input, 
+    disabled=(st.session_state.turn != "user")
+)
